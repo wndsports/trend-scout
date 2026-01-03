@@ -1,112 +1,168 @@
 import streamlit as st
 from pytrends.request import TrendReq
 import pandas as pd
-import wikipedia
+import time
 
-# --- Page Config ---
-st.set_page_config(page_title="B2B Product Scout", page_icon="🏭", layout="wide")
+# --- 1. Page Configuration ---
+st.set_page_config(page_title="Pro Market Scout", page_icon="🚀", layout="wide")
 
-# --- Initialize Pytrends ---
-# Warning: Requires VPN in China
+# --- 2. Session State (Memory) ---
+# This remembers which buttons you clicked
+if 'selected_trends' not in st.session_state:
+    st.session_state.selected_trends = []
+
+# --- 3. Country Database ---
+# Mapping full names to Google Trends codes
+COUNTRY_MAP = {
+    "🌍 Global (All World)": "",
+    "🇺🇸 United States": "US",
+    "🇨🇳 China": "CN",
+    "🇬🇧 United Kingdom": "GB",
+    "🇩🇪 Germany": "DE",
+    "🇯🇵 Japan": "JP",
+    "🇫🇷 France": "FR",
+    "🇨🇦 Canada": "CA",
+    "🇦🇺 Australia": "AU",
+    "🇮🇳 India": "IN",
+    "🇧🇷 Brazil": "BR",
+    "🇲🇽 Mexico": "MX",
+    "🇰🇷 South Korea": "KR",
+    "🇮🇹 Italy": "IT",
+    "🇪🇸 Spain": "ES",
+    "🇳🇱 Netherlands": "NL",
+    "🇸🇦 Saudi Arabia": "SA",
+    "🇹🇷 Turkey": "TR",
+    "🇮🇩 Indonesia": "ID",
+    "🇻🇳 Vietnam": "VN"
+}
+
+# --- 4. Sidebar Settings ---
+st.sidebar.title("⚙️ Market Settings")
+selected_country_label = st.sidebar.selectbox("Target Market", list(COUNTRY_MAP.keys()), index=0)
+geo_code = COUNTRY_MAP[selected_country_label]
+
+# Initialize Pytrends
 try:
-    pytrends = TrendReq(hl='en-US', tz=360, timeout=(10,25))
+    # tz=360 is US CST time zone (standard for global trends)
+    pytrends = TrendReq(hl='en-US', tz=360, timeout=(10, 25))
 except:
-    st.error("⚠️ Connection Error: Please ensure your VPN is Global Mode.")
+    st.sidebar.error("⚠️ VPN Error: Google connection failed.")
 
-# --- SIDEBAR: Quick Select ---
-st.sidebar.title("🚀 Quick Niches")
-niche = st.sidebar.radio("Select Industry:", ["Custom", "Outdoor Gear", "Industrial Machinery", "Sports Equipment"])
+# --- 5. Helper Function: Fetch Data (Cached) ---
+@st.cache_data(ttl=24*60*60) # Save data for 24 hours so it's fast
+def fetch_trend_data(keywords, geo):
+    """Fetches 5-year data for a list of keywords individually to avoid grouping limits."""
+    combined_data = pd.DataFrame()
+    
+    # We fetch one by one to avoid the "5 keyword limit" of Google Trends
+    # and to ensure we get data even if one keyword fails.
+    for kw in keywords:
+        if kw.strip():
+            try:
+                pytrends.build_payload([kw], cat=0, timeframe='today 5-y', geo=geo)
+                df = pytrends.interest_over_time()
+                if not df.empty:
+                    df = df.drop(columns=['isPartial'], errors='ignore')
+                    # Rename the column to the keyword
+                    combined_data[kw] = df[kw]
+                time.sleep(0.5) # Slight pause to be polite to Google API
+            except:
+                pass
+    return combined_data
 
-if niche == "Outdoor Gear":
-    default_term = "Roof Top Tent"
-elif niche == "Industrial Machinery":
-    default_term = "Laser Cutting Machine"
-elif niche == "Sports Equipment":
-    default_term = "Pickleball Paddle"
+# --- 6. TOP SECTION: Curated Growth Opportunities ---
+st.title("🚀 Global Growth Opportunities")
+st.markdown(f"**Market Analysis:** {selected_country_label}")
+
+# A list of diverse, high-potential industries/products
+# You can change these to whatever you want
+CURATED_ITEMS = [
+    "Portable Power Station", "Cold Plunge", "Pickleball", "Red Light Therapy", 
+    "Smart Ring", "Heat Pump", "E-bike", "Matcha", 
+    "Tiny House", "Air Purifier"
+]
+
+st.subheader("🔥 Top 10 Trending Sectors (Select to Analyze)")
+st.caption("Click 'Select' to add these to the main comparison chart below.")
+
+# Fetch data for these 10 items for the sparklines
+curated_data = fetch_trend_data(CURATED_ITEMS, geo_code)
+
+# Layout: 2 rows of 5 columns
+rows = [st.columns(5), st.columns(5)]
+item_idx = 0
+
+for row in rows:
+    for col in row:
+        if item_idx < len(CURATED_ITEMS):
+            item_name = CURATED_ITEMS[item_idx]
+            
+            with col:
+                # Card-like container
+                with st.container(border=True):
+                    st.write(f"**{item_name}**")
+                    
+                    # Small Sparkline Chart
+                    if item_name in curated_data.columns:
+                        st.line_chart(curated_data[item_name], height=80, use_container_width=True)
+                    else:
+                        st.write("No Data")
+                    
+                    # Selection Button Logic
+                    if item_name in st.session_state.selected_trends:
+                        if st.button(f"✅ Selected", key=f"btn_{item_name}", type="primary"):
+                            st.session_state.selected_trends.remove(item_name)
+                            st.rerun()
+                    else:
+                        if st.button(f"Select", key=f"btn_{item_name}"):
+                            # Limit to 6 selections from this list? (Optional, currently unlimited)
+                            if len(st.session_state.selected_trends) < 6:
+                                st.session_state.selected_trends.append(item_name)
+                                st.rerun()
+                            else:
+                                st.toast("You can only select 6 items from this list at once!", icon="⚠️")
+            item_idx += 1
+
+# --- 7. MIDDLE SECTION: Custom Inputs ---
+st.divider()
+st.subheader("🔍 Add Your Own Products")
+st.markdown("Enter up to 6 specific products to compare against the selected trends.")
+
+col1, col2, col3, col4, col5, col6 = st.columns(6)
+custom_inputs = []
+with col1: custom_inputs.append(st.text_input("Product 1", ""))
+with col2: custom_inputs.append(st.text_input("Product 2", ""))
+with col3: custom_inputs.append(st.text_input("Product 3", ""))
+with col4: custom_inputs.append(st.text_input("Product 4", ""))
+with col5: custom_inputs.append(st.text_input("Product 5", ""))
+with col6: custom_inputs.append(st.text_input("Product 6", ""))
+
+# Filter out empty inputs
+active_custom_inputs = [x for x in custom_inputs if x.strip() != ""]
+
+# --- 8. BOTTOM SECTION: Main Comparison Chart ---
+st.divider()
+st.subheader("📊 Combined Trend Analysis")
+
+# Combine Selected Items + Custom Inputs
+all_comparison_items = st.session_state.selected_trends + active_custom_inputs
+
+if all_comparison_items:
+    st.write(f"Comparing: **{', '.join(all_comparison_items)}**")
+    
+    with st.spinner("Fetching data for all items..."):
+        # We re-fetch specifically for this combined chart to ensure axes are aligned 
+        # (Note: Google Trends allows max 5 for strict relative comparison, 
+        # but here we overlay individual fetches to allow unlimited items)
+        final_data = fetch_trend_data(all_comparison_items, geo_code)
+    
+    if not final_data.empty:
+        st.line_chart(final_data, height=500)
+        
+        # Simple Data Table
+        with st.expander("View Raw Data"):
+            st.dataframe(final_data)
+    else:
+        st.warning("No data found for the selected items.")
 else:
-    default_term = ""
-
-# --- MAIN PAGE ---
-st.title("🏭 B2B Opportunity Scout")
-st.markdown("Analyze global demand to find your next export opportunity.")
-
-# 1. Search Field
-col1, col2 = st.columns([3, 1])
-with col1:
-    product_kw = st.text_input("Enter Product Name (English):", value=default_term)
-with col2:
-    target_country = st.selectbox("Target Market", ["US", "GB", "DE", "AU", "CA"])
-
-if product_kw:
-    st.divider()
-    
-    # --- SECTION A: The 5-Year Trend ---
-    st.subheader(f"1. Market Trend (5 Years) - {target_country}")
-    
-    try:
-        pytrends.build_payload([product_kw], cat=0, timeframe='today 5-y', geo=target_country)
-        data = pytrends.interest_over_time()
-        
-        if not data.empty:
-            # Cleanup
-            if 'isPartial' in data.columns: data = data.drop(columns=['isPartial'])
-            
-            # Draw Chart
-            st.line_chart(data)
-            
-            # Metric: Growth Calculation
-            start_vol = data[product_kw].iloc[:4].mean() # Avg of first month
-            end_vol = data[product_kw].iloc[-4:].mean() # Avg of last month
-            growth = ((end_vol - start_vol) / start_vol) * 100 if start_vol != 0 else 0
-            
-            st.metric(label="5-Year Growth Estimate", value=f"{growth:.1f}%")
-        else:
-            st.warning("Not enough data. Try a broader keyword (e.g. 'Tent' instead of 'Ultralight 2-person Tent')")
-
-    except Exception as e:
-        st.error(f"Google Trends Error: {e}")
-
-    # --- SECTION B: Product Intro (Wikipedia) ---
-    st.divider()
-    st.subheader("2. What is this product?")
-    try:
-        summary = wikipedia.summary(product_kw, sentences=3)
-        st.info(summary)
-    except:
-        st.write("No Wikipedia summary found. It might be a very niche or new product.")
-
-    # --- SECTION C: B2B Commercial Intent ---
-    st.divider()
-    st.subheader("3. Commercial Intent (B2B)")
-    st.markdown("Are people looking to *buy bulk* or just looking for info?")
-    
-    # We compare the generic term vs "wholesale/manufacturer" terms
-    b2b_keywords = [product_kw, f"{product_kw} wholesale", f"{product_kw} manufacturer"]
-    
-    try:
-        pytrends.build_payload(b2b_keywords, cat=0, timeframe='today 12-m', geo=target_country)
-        b2b_data = pytrends.interest_over_time()
-        
-        if not b2b_data.empty:
-            if 'isPartial' in b2b_data.columns: b2b_data = b2b_data.drop(columns=['isPartial'])
-            st.line_chart(b2b_data)
-            st.caption("Note: 'Wholesale' volume is usually much lower than the main keyword. If you see ANY movement in the colored lines, it's a good sign.")
-    except:
-        st.write("Could not fetch B2B comparison data.")
-
-    # --- SECTION D: Action Links ---
-    st.divider()
-    st.subheader("4. Take Action")
-    c1, c2, c3 = st.columns(3)
-    
-    # Link to find existing competitors
-    search_url = f"https://www.google.com/search?q={product_kw}+brands"
-    c1.link_button(f"🔍 See Competitors (Google)", search_url)
-    
-    # Link to find suppliers (to see if you can source it)
-    alibaba_url = f"https://www.alibaba.com/trade/search?SearchText={product_kw}"
-    c2.link_button(f"📦 Check Supply (Alibaba)", alibaba_url)
-    
-    # Link to check potential client keywords
-    keyword_url = f"https://keywordseverywhere.com/"
-    c3.link_button("🔑 Keyword Research Tool", keyword_url)
+    st.info("👈 Select items from the top list or enter product names above to see the chart.")
