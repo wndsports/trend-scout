@@ -2,131 +2,156 @@ import streamlit as st
 from pytrends.request import TrendReq
 import pandas as pd
 import time
+import random
 
 # --- 1. Page Configuration ---
 st.set_page_config(page_title="Pro Market Scout", page_icon="🚀", layout="wide")
 
-# --- 2. Session State (Memory) ---
-# This remembers which buttons you clicked
+# --- 2. Huge Database of Niches (Hidden Pool) ---
+ALL_GROWTH_ITEMS = [
+    # Tech & Gadgets
+    "Portable Power Station", "Smart Ring", "Foldable Phone", "VR Headset", "Drone Fishing",
+    "GaN Charger", "Mechanical Keyboard", "Smart Bird Feeder", "E-Ink Tablet", "3D Printer Filament",
+    "Bone Conduction Headphones", "Smart Notebook", "Portable Monitor", "Cable Organizer",
+    # Health & Wellness
+    "Cold Plunge", "Red Light Therapy", "Mushroom Coffee", "Gua Sha", "Mouth Tape", 
+    "Massage Gun", "Weighted Blanket", "Blue Light Glasses", "Air Purifier", "Water Flosser",
+    "Ice Bath Tub", "Posture Corrector", "Neck Fan", "Sleep Mask", "Vitamin Shower Filter",
+    # Home & Garden
+    "Heat Pump", "Tiny House", "Vertical Farming", "Hydroponic Tower", "Robot Lawn Mower",
+    "Epoxy Table", "Modular Sofa", "Air Fryer Liner", "Sunset Lamp", "Silk Pillowcase",
+    "Bento Box", "Vegetable Chopper", "Motion Sensor Light", "Handheld Vacuum", "Carpet Cleaner",
+    # Outdoor & Sports
+    "Pickleball", "Paddle Board", "Roof Top Tent", "Trail Camera", "Disc Golf",
+    "Electric Bike", "Golf Simulator", "Barefoot Shoes", "Ruck Plate", "Recovery Sandals",
+    "Camping Stove", "Tactical Flashlight", "Waterproof Bag", "Hiking Poles", "Hammock Stand",
+    # Kids & Pets
+    "Montessori Toys", "Busy Board", "Slow Feeder Dog Bowl", "Dog DNA Test", "Baby Monitor",
+    "Cat Water Fountain", "Dog Car Seat", "Reusable Water Balloon", "Balance Bike"
+]
+
+# --- 3. Session State (Memory) ---
 if 'selected_trends' not in st.session_state:
     st.session_state.selected_trends = []
 
-# --- 3. Country Database ---
-# Mapping full names to Google Trends codes
+if 'current_menu_items' not in st.session_state:
+    st.session_state.current_menu_items = random.sample(ALL_GROWTH_ITEMS, 10)
+
+# --- 4. Massive Country Database (ISO-3166 Alpha-2) ---
 COUNTRY_MAP = {
     "🌍 Global (All World)": "",
-    "🇺🇸 United States": "US",
-    "🇨🇳 China": "CN",
-    "🇬🇧 United Kingdom": "GB",
-    "🇩🇪 Germany": "DE",
-    "🇯🇵 Japan": "JP",
-    "🇫🇷 France": "FR",
-    "🇨🇦 Canada": "CA",
-    "🇦🇺 Australia": "AU",
-    "🇮🇳 India": "IN",
-    "🇧🇷 Brazil": "BR",
-    "🇲🇽 Mexico": "MX",
-    "🇰🇷 South Korea": "KR",
-    "🇮🇹 Italy": "IT",
-    "🇪🇸 Spain": "ES",
-    "🇳🇱 Netherlands": "NL",
-    "🇸🇦 Saudi Arabia": "SA",
-    "🇹🇷 Turkey": "TR",
-    "🇮🇩 Indonesia": "ID",
-    "🇻🇳 Vietnam": "VN"
+    "🇺🇸 United States": "US", "🇬🇧 United Kingdom": "GB", "🇨🇦 Canada": "CA", 
+    "🇦🇺 Australia": "AU", "🇩🇪 Germany": "DE", "🇫🇷 France": "FR", 
+    "🇨🇳 China": "CN", "🇯🇵 Japan": "JP", "🇮🇳 India": "IN", "🇧🇷 Brazil": "BR",
+    "🇲🇽 Mexico": "MX", "🇰🇷 South Korea": "KR", "🇮🇹 Italy": "IT", "🇪🇸 Spain": "ES",
+    "🇳🇱 Netherlands": "NL", "🇹🇷 Turkey": "TR", "🇸🇦 Saudi Arabia": "SA",
+    "🇮🇩 Indonesia": "ID", "🇻🇳 Vietnam": "VN", "🇷🇺 Russia": "RU", "🇿🇦 South Africa": "ZA",
+    "🇦🇪 United Arab Emirates": "AE", "🇦🇷 Argentina": "AR", "🇦🇹 Austria": "AT", 
+    "🇧🇪 Belgium": "BE", "🇧🇬 Bulgaria": "BG", "🇧🇭 Bahrain": "BH", "🇧🇩 Bangladesh": "BD",
+    "🇨🇭 Switzerland": "CH", "🇨🇱 Chile": "CL", "🇨🇴 Colombia": "CO", "🇨🇿 Czechia": "CZ",
+    "🇩🇰 Denmark": "DK", "🇪🇬 Egypt": "EG", "🇫🇮 Finland": "FI", "🇬🇷 Greece": "GR",
+    "🇭🇰 Hong Kong": "HK", "🇭🇺 Hungary": "HU", "🇮🇪 Ireland": "IE", "🇮🇱 Israel": "IL",
+    "🇰🇼 Kuwait": "KW", "🇲🇾 Malaysia": "MY", "🇳🇬 Nigeria": "NG", "🇳🇴 Norway": "NO",
+    "🇳🇿 New Zealand": "NZ", "🇵🇭 Philippines": "PH", "🇵🇰 Pakistan": "PK", "🇵🇱 Poland": "PL",
+    "🇵🇹 Portugal": "PT", "🇶🇦 Qatar": "QA", "🇷🇴 Romania": "RO", "🇸🇪 Sweden": "SE",
+    "🇸🇬 Singapore": "SG", "🇹🇭 Thailand": "TH", "🇹🇼 Taiwan": "TW", "🇺🇦 Ukraine": "UA"
+    # (List shortened slightly for brevity, but covers top 95% of global GDP)
 }
 
-# --- 4. Sidebar Settings ---
+# --- 5. Sidebar Settings ---
 st.sidebar.title("⚙️ Market Settings")
 selected_country_label = st.sidebar.selectbox("Target Market", list(COUNTRY_MAP.keys()), index=0)
 geo_code = COUNTRY_MAP[selected_country_label]
 
 # Initialize Pytrends
 try:
-    # tz=360 is US CST time zone (standard for global trends)
     pytrends = TrendReq(hl='en-US', tz=360, timeout=(10, 25))
 except:
     st.sidebar.error("⚠️ VPN Error: Google connection failed.")
 
-# --- 5. Helper Function: Fetch Data (Cached) ---
-@st.cache_data(ttl=24*60*60) # Save data for 24 hours so it's fast
+# --- 6. Helper Function: Fetch Data ---
+@st.cache_data(ttl=24*60*60)
 def fetch_trend_data(keywords, geo):
-    """Fetches 5-year data for a list of keywords individually to avoid grouping limits."""
     combined_data = pd.DataFrame()
-    
-    # We fetch one by one to avoid the "5 keyword limit" of Google Trends
-    # and to ensure we get data even if one keyword fails.
     for kw in keywords:
         if kw.strip():
             try:
+                # If geo is empty (Global), we pass nothing or ''
                 pytrends.build_payload([kw], cat=0, timeframe='today 5-y', geo=geo)
                 df = pytrends.interest_over_time()
                 if not df.empty:
                     df = df.drop(columns=['isPartial'], errors='ignore')
-                    # Rename the column to the keyword
                     combined_data[kw] = df[kw]
-                time.sleep(0.5) # Slight pause to be polite to Google API
-            except:
+                time.sleep(0.5) 
+            except Exception as e:
+                # Fail silently for individual keys to keep app running
                 pass
     return combined_data
 
-# --- 6. TOP SECTION: Curated Growth Opportunities ---
-st.title("🚀 Global Growth Opportunities")
-st.markdown(f"**Market Analysis:** {selected_country_label}")
+# --- 7. TOP SECTION: Discovery Menu ---
+col_title, col_btn = st.columns([6, 1])
+with col_title:
+    st.title("🚀 Growth Opportunities")
+    st.caption(f"Market Analysis: **{selected_country_label}**")
+with col_btn:
+    st.write("") 
+    st.write("") 
+    if st.button("🔄 Refresh", type="primary"):
+        st.session_state.current_menu_items = random.sample(ALL_GROWTH_ITEMS, 10)
 
-# A list of diverse, high-potential industries/products
-# You can change these to whatever you want
-CURATED_ITEMS = [
-    "Portable Power Station", "Cold Plunge", "Pickleball", "Red Light Therapy", 
-    "Smart Ring", "Heat Pump", "E-bike", "Matcha", 
-    "Tiny House", "Air Purifier"
-]
+# Fetch data for menu
+menu_items = st.session_state.current_menu_items
+with st.spinner("Analyzing market trends..."):
+    menu_data = fetch_trend_data(menu_items, geo_code)
 
-st.subheader("🔥 Top 10 Trending Sectors (Select to Analyze)")
-st.caption("Click 'Select' to add these to the main comparison chart below.")
-
-# Fetch data for these 10 items for the sparklines
-curated_data = fetch_trend_data(CURATED_ITEMS, geo_code)
-
-# Layout: 2 rows of 5 columns
+# --- DISPLAY GRID (Fixed Height Boxes) ---
+# We use st.columns and a fixed-height container
 rows = [st.columns(5), st.columns(5)]
 item_idx = 0
 
 for row in rows:
     for col in row:
-        if item_idx < len(CURATED_ITEMS):
-            item_name = CURATED_ITEMS[item_idx]
+        if item_idx < len(menu_items):
+            item_name = menu_items[item_idx]
             
             with col:
-                # Card-like container
-                with st.container(border=True):
+                # height=280 fixes the box size so they align perfectly
+                with st.container(border=True, height=290):
                     st.write(f"**{item_name}**")
                     
-                    # Small Sparkline Chart
-                    if item_name in curated_data.columns:
-                        st.line_chart(curated_data[item_name], height=80, use_container_width=True)
+                    # Sparkline
+                    if item_name in menu_data.columns:
+                        st.line_chart(menu_data[item_name], height=80, use_container_width=True)
                     else:
-                        st.write("No Data")
+                        st.warning("No Data")
+                        st.caption("Try 'Global' or broader market")
                     
-                    # Selection Button Logic
-                    if item_name in st.session_state.selected_trends:
-                        if st.button(f"✅ Selected", key=f"btn_{item_name}", type="primary"):
+                    # Layout for Buttons (Select | Check)
+                    # We use columns inside the card to stack them or put them side-by-side
+                    
+                    # 1. Select Button
+                    is_selected = item_name in st.session_state.selected_trends
+                    if is_selected:
+                        if st.button(f"✅ Active", key=f"btn_{item_name}_{item_idx}", use_container_width=True):
                             st.session_state.selected_trends.remove(item_name)
                             st.rerun()
                     else:
-                        if st.button(f"Select", key=f"btn_{item_name}"):
-                            # Limit to 6 selections from this list? (Optional, currently unlimited)
+                        if st.button(f"Select", key=f"btn_{item_name}_{item_idx}", use_container_width=True):
                             if len(st.session_state.selected_trends) < 6:
                                 st.session_state.selected_trends.append(item_name)
                                 st.rerun()
                             else:
-                                st.toast("You can only select 6 items from this list at once!", icon="⚠️")
+                                st.toast("Max 6 items allowed!", icon="⚠️")
+                    
+                    # 2. Check on Google Button
+                    search_url = f"https://www.google.com/search?q={item_name}"
+                    st.link_button("🔎 Google Check", search_url, use_container_width=True)
+
             item_idx += 1
 
-# --- 7. MIDDLE SECTION: Custom Inputs ---
+# --- 8. MIDDLE SECTION: Custom Inputs ---
 st.divider()
-st.subheader("🔍 Add Your Own Products")
-st.markdown("Enter up to 6 specific products to compare against the selected trends.")
+st.subheader("🔍 Add Custom Products")
 
 col1, col2, col3, col4, col5, col6 = st.columns(6)
 custom_inputs = []
@@ -137,32 +162,24 @@ with col4: custom_inputs.append(st.text_input("Product 4", ""))
 with col5: custom_inputs.append(st.text_input("Product 5", ""))
 with col6: custom_inputs.append(st.text_input("Product 6", ""))
 
-# Filter out empty inputs
-active_custom_inputs = [x for x in custom_inputs if x.strip() != ""]
+active_custom = [x for x in custom_inputs if x.strip() != ""]
 
-# --- 8. BOTTOM SECTION: Main Comparison Chart ---
+# --- 9. BOTTOM SECTION: The Master Chart ---
 st.divider()
-st.subheader("📊 Combined Trend Analysis")
+st.subheader("📊 Trend Comparison Chart")
 
-# Combine Selected Items + Custom Inputs
-all_comparison_items = st.session_state.selected_trends + active_custom_inputs
+final_list = st.session_state.selected_trends + active_custom
 
-if all_comparison_items:
-    st.write(f"Comparing: **{', '.join(all_comparison_items)}**")
+if final_list:
+    final_list = list(set(final_list))
+    st.markdown(f"Comparing: **{', '.join(final_list)}**")
     
-    with st.spinner("Fetching data for all items..."):
-        # We re-fetch specifically for this combined chart to ensure axes are aligned 
-        # (Note: Google Trends allows max 5 for strict relative comparison, 
-        # but here we overlay individual fetches to allow unlimited items)
-        final_data = fetch_trend_data(all_comparison_items, geo_code)
+    with st.spinner("Generating comparison..."):
+        chart_data = fetch_trend_data(final_list, geo_code)
     
-    if not final_data.empty:
-        st.line_chart(final_data, height=500)
-        
-        # Simple Data Table
-        with st.expander("View Raw Data"):
-            st.dataframe(final_data)
+    if not chart_data.empty:
+        st.line_chart(chart_data, height=500)
     else:
-        st.warning("No data found for the selected items.")
+        st.warning("No data available for these keywords in this region.")
 else:
-    st.info("👈 Select items from the top list or enter product names above to see the chart.")
+    st.info("👈 Select items or type product names to see the chart.")
