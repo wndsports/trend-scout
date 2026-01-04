@@ -3,39 +3,26 @@ from pytrends.request import TrendReq
 import pandas as pd
 import time
 import random
-import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 
 # --- 1. Page Configuration ---
 st.set_page_config(page_title="Pro Market Scout", page_icon="🚀", layout="wide")
 
-# --- 2. Robust Connection Setup (THE FIX) ---
+# --- 2. Robust Connection Setup (FIXED) ---
 def get_pytrends_client():
     """
-    Creates a robust session with automatic retry logic to handle
-    Google's rate limiting and connection drops.
+    Creates a client with built-in retry logic.
+    We removed the complex session code that was causing the crash.
     """
-    session = requests.Session()
-    # Retry up to 3 times if Google says "Too Many Requests" (429) or Server Error (5xx)
-    retry = Retry(connect=3, read=3, redirect=3, status=3, 
-                  backoff_factor=1, # Wait 1s, then 2s, then 4s...
-                  status_forcelist=[429, 500, 502, 503, 504])
-    adapter = HTTPAdapter(max_retries=retry)
-    session.mount('https://', adapter)
-    session.mount('http://', adapter)
-    
-    # Initialize Pytrends with this robust session
-    # tz=360 is US Central Time (Standard for Trends)
-    return TrendReq(hl='en-US', tz=360, timeout=(10, 25), requests_args={'verify':False}, session=session)
+    # retries=3: Tries 3 times if Google fails
+    # backoff_factor=1: Waits 1s, 2s, 4s between failures
+    return TrendReq(hl='en-US', tz=360, timeout=(10, 25), retries=3, backoff_factor=1)
 
 # --- 3. Helper Function: Robust Data Fetching ---
-# We removed @st.cache_data temporarily to ensure retries happen if data failed previously
 def fetch_trend_data_robust(keywords, geo):
     pytrends = get_pytrends_client()
     combined_data = pd.DataFrame()
     
-    # Progress bar for user feedback
+    # Progress bar to show the user it's working
     progress_text = "Connecting to Google Trends..."
     my_bar = st.progress(0, text=progress_text)
     total = len(keywords)
@@ -43,32 +30,26 @@ def fetch_trend_data_robust(keywords, geo):
     for i, kw in enumerate(keywords):
         if kw.strip():
             # Update progress
-            my_bar.progress(int((i / total) * 100), text=f"Analyzing: {kw}...")
+            percentage = int(((i + 1) / total) * 100)
+            my_bar.progress(percentage, text=f"Analyzing: {kw}...")
             
-            # Try fetching up to 3 times per keyword
-            attempts = 0
-            success = False
-            while attempts < 3 and not success:
-                try:
-                    # Request data
-                    pytrends.build_payload([kw], cat=0, timeframe='today 5-y', geo=geo)
-                    df = pytrends.interest_over_time()
-                    
-                    if not df.empty:
-                        df = df.drop(columns=['isPartial'], errors='ignore')
-                        combined_data[kw] = df[kw]
-                        success = True
-                    else:
-                        # If empty, it might just be no data, so we stop trying
-                        success = True 
-                        
-                except Exception as e:
-                    # If error, wait and try again (Backoff)
-                    attempts += 1
-                    time.sleep(random.uniform(2, 4)) # Random wait 2-4 seconds
-            
-            # Always sleep a bit between keywords to avoid hitting rate limits
-            time.sleep(random.uniform(1, 2))
+            try:
+                # Request data
+                pytrends.build_payload([kw], cat=0, timeframe='today 5-y', geo=geo)
+                df = pytrends.interest_over_time()
+                
+                if not df.empty:
+                    df = df.drop(columns=['isPartial'], errors='ignore')
+                    combined_data[kw] = df[kw]
+                
+                # Sleep is CRITICAL to avoid "429 Too Many Requests"
+                # We wait 1-2 seconds between every single keyword
+                time.sleep(random.uniform(1.0, 2.0))
+                
+            except Exception as e:
+                # If it fails, we just skip this keyword and keep going
+                # (The built-in retry has already tried 3 times by this point)
+                pass
             
     my_bar.empty() # Remove progress bar when done
     return combined_data
@@ -139,9 +120,9 @@ with col_btn:
     if st.button("🔄 Refresh", type="primary"):
         st.session_state.current_menu_items = random.sample(ALL_GROWTH_ITEMS, 10)
 
-# Fetch data for menu (Using the NEW Robust Function)
+# Fetch data for menu
 menu_items = st.session_state.current_menu_items
-# We use st.empty() to create a placeholder if we wanted, but the function handles the progress bar
+# Note: This might take 10-15 seconds now because of the pauses
 menu_data = fetch_trend_data_robust(menu_items, geo_code)
 
 # --- DISPLAY GRID ---
@@ -154,6 +135,7 @@ for row in rows:
             item_name = menu_items[item_idx]
             
             with col:
+                # Fixed height box
                 with st.container(border=True, height=290):
                     st.write(f"**{item_name}**")
                     
@@ -208,7 +190,6 @@ if final_list:
     st.markdown(f"Comparing: **{', '.join(final_list)}**")
     
     with st.spinner("Generating comparison chart (this might take a few seconds)..."):
-        # Use the robust fetcher here too
         chart_data = fetch_trend_data_robust(final_list, geo_code)
     
     if not chart_data.empty:
