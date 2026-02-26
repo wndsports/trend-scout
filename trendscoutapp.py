@@ -3,50 +3,61 @@ from pytrends.request import TrendReq
 import pandas as pd
 import time
 import random
+import os
 
-# --- 1. Page Config ---
+# --- 1. PROXY CONFIGURATION (THE FIX) ---
+# ⚠️ REPLACE '10808' WITH YOUR ACTUAL VPN PORT IF DIFFERENT!
+# Common ports: 10808 (Clash), 10809 (v2ray), 1080 (Shadowsocks)
+VPN_PORT = '10808' 
+
+# Force Python to use the VPN for all traffic
+os.environ['http_proxy'] = f'http://127.0.0.1:{VPN_PORT}'
+os.environ['https_proxy'] = f'http://127.0.0.1:{VPN_PORT}'
+
+# --- 2. Page Configuration ---
 st.set_page_config(page_title="Pro Market Scout", page_icon="🚀", layout="wide")
 
-# --- 2. Stealth Connection Setup ---
+# --- 3. Robust Connection Setup ---
+def get_pytrends_client():
+    """
+    Creates a client with built-in retry logic.
+    """
+    # We lowered the timeout slightly to fail faster if the proxy is wrong
+    return TrendReq(hl='en-US', tz=360, timeout=(10, 25), retries=2, backoff_factor=1)
+
+# --- 4. Stealth Data Fetching (Grouped) ---
 def get_trend_data_grouped(keywords, geo):
     """
-    STEALTH MODE: Fetches keywords in groups of 5.
-    Google allows up to 5 keywords in a single request.
-    This reduces API calls from 10 down to 2, significantly reducing blocks.
+    Fetches keywords in groups of 5 to avoid blocking.
     """
-    # Randomize wait time to look human
     time.sleep(random.uniform(0.5, 1.5))
     
-    # Connect to Google
-    pytrends = TrendReq(hl='en-US', tz=360, timeout=(10, 25), retries=2, backoff_factor=1)
+    # Connect (Proxies are now handled automatically by os.environ above)
+    pytrends = get_pytrends_client()
     
     combined_data = pd.DataFrame()
     
-    # Split keywords into chunks of 5 (Google's limit)
-    # e.g., if you have 10 items, it creates 2 batches
+    # Split keywords into chunks of 5
     batches = [keywords[i:i + 5] for i in range(0, len(keywords), 5)]
     
     for batch in batches:
         try:
-            # The Magic: Request 5 at once
             pytrends.build_payload(batch, cat=0, timeframe='today 5-y', geo=geo)
             data = pytrends.interest_over_time()
             
             if not data.empty:
                 data = data.drop(columns=['isPartial'], errors='ignore')
-                # Merge into our main storage
                 combined_data = pd.concat([combined_data, data], axis=1)
             
-            # Wait between batches
-            time.sleep(2) 
+            # Wait between batches to be safe
+            time.sleep(random.uniform(1.5, 3.0))
             
         except Exception as e:
-            # If a batch fails, we just continue to the next one
             pass
             
     return combined_data
 
-# --- 3. Database of Niches ---
+# --- 5. Database of Niches ---
 ALL_GROWTH_ITEMS = [
     # Tech
     "Portable Power Station", "Smart Ring", "Foldable Phone", "VR Headset", "Drone Fishing",
@@ -62,15 +73,15 @@ ALL_GROWTH_ITEMS = [
     "Electric Bike", "Golf Simulator", "Barefoot Shoes", "Ruck Plate", "Recovery Sandals"
 ]
 
-# --- 4. Session State ---
+# --- 6. Session State ---
 if 'selected_trends' not in st.session_state:
     st.session_state.selected_trends = []
 
-# We reduce the default items to 5 to be safer on load
+# Start with just 5 items to test connection quickly
 if 'current_menu_items' not in st.session_state:
     st.session_state.current_menu_items = random.sample(ALL_GROWTH_ITEMS, 5)
 
-# --- 5. Country Database ---
+# --- 7. Country Database ---
 COUNTRY_MAP = {
     "🌍 Global (All World)": "",
     "🇺🇸 United States": "US", "🇬🇧 United Kingdom": "GB", "🇨🇦 Canada": "CA", 
@@ -81,12 +92,12 @@ COUNTRY_MAP = {
     "🇮🇩 Indonesia": "ID", "🇻🇳 Vietnam": "VN"
 }
 
-# --- 6. Sidebar ---
+# --- 8. Sidebar ---
 st.sidebar.title("⚙️ Market Settings")
 selected_country_label = st.sidebar.selectbox("Target Market", list(COUNTRY_MAP.keys()), index=0)
 geo_code = COUNTRY_MAP[selected_country_label]
 
-# --- 7. TOP SECTION: Discovery ---
+# --- 9. TOP SECTION: Discovery ---
 col_title, col_btn = st.columns([6, 1])
 with col_title:
     st.title("🚀 Growth Opportunities")
@@ -95,18 +106,16 @@ with col_btn:
     st.write("") 
     st.write("") 
     if st.button("🔄 Refresh", type="primary"):
-        # Load 5 new items
         st.session_state.current_menu_items = random.sample(ALL_GROWTH_ITEMS, 5)
 
 menu_items = st.session_state.current_menu_items
 
-# --- FETCH DATA (The New Grouped Method) ---
-with st.spinner("Connecting to Google..."):
-    # This now makes only 1 or 2 requests total
+# --- FETCH DATA ---
+# This is where the error happened before. Now it uses the VPN.
+with st.spinner(f"Connecting to Google via Proxy Port {VPN_PORT}..."):
     menu_data = get_trend_data_grouped(menu_items, geo_code)
 
 # --- DISPLAY GRID ---
-# We display 5 items in one row
 cols = st.columns(5)
 item_idx = 0
 
@@ -143,7 +152,7 @@ for col in cols:
 
         item_idx += 1
 
-# --- 8. MIDDLE SECTION: Custom Inputs ---
+# --- 10. MIDDLE SECTION: Custom Inputs ---
 st.divider()
 st.subheader("🔍 Add Custom Products")
 col1, col2, col3, col4, col5 = st.columns(5)
@@ -156,7 +165,7 @@ with col5: custom_inputs.append(st.text_input("Product 5", ""))
 
 active_custom = [x for x in custom_inputs if x.strip() != ""]
 
-# --- 9. BOTTOM SECTION: Master Chart ---
+# --- 11. BOTTOM SECTION: Master Chart ---
 st.divider()
 st.subheader("📊 Comparison")
 
@@ -167,12 +176,11 @@ if final_list:
     st.markdown(f"Comparing: **{', '.join(final_list)}**")
     
     with st.spinner("Fetching comparison data..."):
-        # Use grouped fetch here too
         chart_data = get_trend_data_grouped(final_list, geo_code)
     
     if not chart_data.empty:
         st.line_chart(chart_data, height=500)
     else:
-        st.error("Google blocked the connection. Please try running LOCALLY (see instructions).")
+        st.error(f"Connection Failed. Please check if Port {VPN_PORT} is correct in your VPN settings.")
 else:
     st.info("Select items to compare.")
